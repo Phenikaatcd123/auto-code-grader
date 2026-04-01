@@ -25,13 +25,11 @@ const submissionController = {
             const { exam_id, question_id, code } = req.body;
             const student_id = req.user.id;
 
-            // Kiểm tra question tồn tại
             const question = await Question.findById(question_id);
             if (!question) {
                 return res.status(404).json({ message: 'Question not found' });
             }
 
-            // Kiểm tra đã nộp chưa
             let submission = await Submission.findByStudentAndQuestion(
                 student_id, exam_id, question_id
             );
@@ -42,7 +40,6 @@ const submissionController = {
                 });
             }
 
-            // Lưu bài nộp
             const submissionId = await Submission.create({
                 student_id,
                 exam_id,
@@ -51,10 +48,8 @@ const submissionController = {
                 status: 'submitted'
             });
 
-            // Xóa draft nếu có
             await Draft.delete(student_id, exam_id, question_id);
 
-            // Thêm vào queue để xử lý grading
             const job = await gradingQueue.add({
                 submissionId,
                 questionId: question_id
@@ -65,7 +60,6 @@ const submissionController = {
 
             console.log(`📦 Added grading job ${job.id} for submission ${submissionId}`);
 
-            // Thông báo cho teacher qua socket
             if (socketService) {
                 const submission = await Submission.findById(submissionId);
                 socketService.notifyNewSubmission(submission, exam_id);
@@ -98,7 +92,6 @@ const submissionController = {
                 code
             });
 
-            // Thông báo auto-save thành công
             if (socketService) {
                 socketService.notifyAutoSave(student_id, exam_id, question_id, new Date());
             }
@@ -115,6 +108,57 @@ const submissionController = {
         }
     },
 
+    // ============= THÊM CÁC FUNCTION CÒN THIẾU =============
+
+    // Lấy draft
+    async getDraft(req, res) {
+        try {
+            const { exam_id, question_id } = req.params;
+            const student_id = req.user.id;
+
+            const draft = await Draft.findByStudentAndQuestion(
+                student_id, exam_id, question_id
+            );
+
+            if (!draft) {
+                return res.status(404).json({ message: 'No draft found' });
+            }
+
+            res.json(draft);
+
+        } catch (error) {
+            console.error('Get draft error:', error);
+            res.status(500).json({ message: 'Server error' });
+        }
+    },
+
+    // Lấy lịch sử nộp bài
+    async getSubmissionHistory(req, res) {
+        try {
+            const student_id = req.user.id;
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 20;
+            const offset = (page - 1) * limit;
+
+            const submissions = await Submission.getStudentHistory(
+                student_id, limit, offset
+            );
+
+            res.json({
+                submissions,
+                pagination: {
+                    page,
+                    limit,
+                    hasMore: submissions.length === limit
+                }
+            });
+
+        } catch (error) {
+            console.error('Get history error:', error);
+            res.status(500).json({ message: 'Server error' });
+        }
+    },
+
     // Lấy kết quả bài nộp
     async getSubmissionResult(req, res) {
         try {
@@ -127,12 +171,10 @@ const submissionController = {
                 return res.status(404).json({ message: 'Submission not found' });
             }
 
-            // Kiểm tra quyền
             if (submission.student_id !== student_id && req.user.role !== 'teacher') {
                 return res.status(403).json({ message: 'Not authorized' });
             }
 
-            // Parse test results nếu có
             if (submission.test_results) {
                 submission.test_results = JSON.parse(submission.test_results);
             }
@@ -141,6 +183,68 @@ const submissionController = {
 
         } catch (error) {
             console.error('Get result error:', error);
+            res.status(500).json({ message: 'Server error' });
+        }
+    },
+
+    // Lấy tất cả bài nộp của exam (cho giáo viên)
+    async getExamSubmissions(req, res) {
+        try {
+            const { exam_id } = req.params;
+            
+            if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+                return res.status(403).json({ message: 'Not authorized' });
+            }
+
+            const submissions = await Submission.findByExam(exam_id);
+
+            const groupedByStudent = submissions.reduce((acc, sub) => {
+                if (!acc[sub.student_id]) {
+                    acc[sub.student_id] = {
+                        student_id: sub.student_id,
+                        student_name: sub.student_name,
+                        student_email: sub.student_email,
+                        submissions: []
+                    };
+                }
+                acc[sub.student_id].submissions.push(sub);
+                return acc;
+            }, {});
+
+            res.json(Object.values(groupedByStudent));
+
+        } catch (error) {
+            console.error('Get exam submissions error:', error);
+            res.status(500).json({ message: 'Server error' });
+        }
+    },
+
+    // Chấm điểm thủ công
+    async manualGrade(req, res) {
+        try {
+            const { submissionId } = req.params;
+            const { score, feedback } = req.body;
+
+            if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+                return res.status(403).json({ message: 'Not authorized' });
+            }
+
+            const submission = await Submission.findById(submissionId);
+            if (!submission) {
+                return res.status(404).json({ message: 'Submission not found' });
+            }
+
+            await Submission.updateGrade(submissionId, score, feedback, submission.test_results);
+
+            res.json({
+                message: 'Grade updated successfully',
+                submissionId,
+                score,
+                feedback
+            });
+
+        } catch (error) {
+            console.error('Manual grade error:', error);
             res.status(500).json({ message: 'Server error' });
         }
     },
@@ -172,9 +276,7 @@ const submissionController = {
             console.error('Get job status error:', error);
             res.status(500).json({ message: 'Server error' });
         }
-    },
-
-    // ... các methods khác giữ nguyên
+    }
 };
 
 module.exports = submissionController;

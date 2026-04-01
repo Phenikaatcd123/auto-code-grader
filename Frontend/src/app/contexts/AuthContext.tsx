@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import api from '../../services/api';
 
 export type UserRole = 'student' | 'teacher' | 'admin';
 
@@ -12,49 +13,66 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => void;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   switchRole: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users cho demo
-const mockUsers: Record<string, User> = {
-  'student@edu.vn': {
-    id: '1',
-    name: 'Nguyễn Văn A',
-    email: 'student@edu.vn',
-    role: 'student'
-  },
-  'teacher@edu.vn': {
-    id: '2',
-    name: 'TS. Trần Thị B',
-    email: 'teacher@edu.vn',
-    role: 'teacher'
-  },
-  'admin@edu.vn': {
-    id: '3',
-    name: 'Admin System',
-    email: 'admin@edu.vn',
-    role: 'admin'
-  }
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = (email: string, password: string) => {
-    // Mock login - chỉ check email
-    const foundUser = mockUsers[email];
-    if (foundUser) {
-      setUser(foundUser);
-    } else {
-      alert('Email không tồn tại!');
+  // Kiểm tra token khi load app
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const response = await api.get('/auth/me');
+          const apiUser = response as any;
+          setUser({
+            id: apiUser.id,
+            name: apiUser.full_name,
+            email: apiUser.email,
+            role: apiUser.role
+          });
+        } catch (error) {
+          console.error('Auth init error:', error);
+          localStorage.removeItem('token');
+        }
+      }
+      setIsLoading(false);
+    };
+    initAuth();
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const response = await api.post('/auth/login', { email, password });
+      const { token, user: apiUser } = response as any;
+      console.log('Login response:', response);
+      
+      localStorage.setItem('token', token);
+      setUser({
+        id: apiUser.id,
+        name: apiUser.full_name,
+        email: apiUser.email,
+        role: apiUser.role
+      });
+    } catch (error: any) {
+      console.error('Login error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = () => {
+    localStorage.removeItem('token');
     setUser(null);
   };
 
@@ -65,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, switchRole }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, switchRole }}>
       {children}
     </AuthContext.Provider>
   );

@@ -17,19 +17,34 @@ const draftValidation = [
     body('code').notEmpty()
 ];
 
-// Student routes
+// ==================== STUDENT ROUTES ====================
+// Nộp bài
 router.post('/submit', protect, submitValidation, submissionController.submitCode);
+
+// Lưu draft (auto-save)
 router.post('/draft', protect, draftValidation, submissionController.saveDraft);
+
+// Lấy draft đã lưu
 router.get('/draft/:exam_id/:question_id', protect, submissionController.getDraft);
+
+// Lấy lịch sử nộp bài
 router.get('/history', protect, submissionController.getSubmissionHistory);
+
+// Lấy kết quả bài nộp theo ID
 router.get('/:submissionId', protect, submissionController.getSubmissionResult);
 
-// Teacher routes
+// Lấy trạng thái job grading
+router.get('/job/:jobId', protect, submissionController.getJobStatus);
+
+// ==================== TEACHER ROUTES ====================
+// Lấy tất cả bài nộp của một exam
 router.get('/exam/:exam_id', protect, authorize('teacher', 'admin'), submissionController.getExamSubmissions);
+
+// Chấm điểm thủ công (ghi đè)
 router.put('/:submissionId/grade', protect, authorize('teacher', 'admin'), submissionController.manualGrade);
 
-
-// Test route (chỉ cho teacher/admin)
+// ==================== TEST ROUTES ====================
+// Test AI grading (chỉ cho teacher/admin)
 router.post('/test-ai-grading', protect, authorize('teacher', 'admin'), async (req, res) => {
     try {
         const { code, language, questionTitle, questionDescription } = req.body;
@@ -67,4 +82,5 @@ router.post('/test-ai-grading', protect, authorize('teacher', 'admin'), async (r
         res.status(500).json({ error: error.message });
     }
 });
+
 module.exports = router;

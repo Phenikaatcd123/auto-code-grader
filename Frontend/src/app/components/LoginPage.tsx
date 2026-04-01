@@ -3,23 +3,43 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { Code2, GraduationCap } from 'lucide-react';
+import { Code2, GraduationCap, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/app/contexts/AuthContext';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    login(email, password);
+    setError('');
+    setLoading(true);
+    
+    try {
+      await login(email, password);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Đăng nhập thất bại');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const quickLogin = (email: string) => {
-    setEmail(email);
-    setPassword('demo');
-    login(email, 'demo');
+  const quickLogin = async (demoEmail: string) => {
+    setEmail(demoEmail);
+    setPassword('123456');
+    setError('');
+    setLoading(true);
+    
+    try {
+      await login(demoEmail, '123456');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Đăng nhập thất bại');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -65,6 +85,14 @@ export function LoginPage() {
             <CardDescription>Nhập thông tin để truy cập hệ thống</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Hiển thị lỗi */}
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                <span className="text-sm text-red-600">{error}</span>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -74,6 +102,7 @@ export function LoginPage() {
                   placeholder="student@edu.vn"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
                   required
                 />
               </div>
@@ -85,11 +114,12 @@ export function LoginPage() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
                   required
                 />
               </div>
-              <Button type="submit" className="w-full">
-                Đăng nhập
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </Button>
             </form>
 
@@ -107,7 +137,8 @@ export function LoginPage() {
                   type="button"
                   variant="outline"
                   className="w-full justify-start"
-                  onClick={() => quickLogin('student@edu.vn')}
+                  onClick={() => quickLogin('testnew@edu.vn')}
+                  disabled={loading}
                 >
                   <GraduationCap className="w-4 h-4 mr-2" />
                   Đăng nhập với vai trò Sinh viên
@@ -117,6 +148,7 @@ export function LoginPage() {
                   variant="outline"
                   className="w-full justify-start"
                   onClick={() => quickLogin('teacher@edu.vn')}
+                  disabled={loading}
                 >
                   <Code2 className="w-4 h-4 mr-2" />
                   Đăng nhập với vai trò Giảng viên
@@ -126,11 +158,15 @@ export function LoginPage() {
                   variant="outline"
                   className="w-full justify-start"
                   onClick={() => quickLogin('admin@edu.vn')}
+                  disabled={loading}
                 >
                   <Code2 className="w-4 h-4 mr-2" />
                   Đăng nhập với vai trò Admin
                 </Button>
               </div>
+              <p className="text-xs text-gray-500 text-center mt-4">
+                Mật khẩu demo: demo123456
+              </p>
             </div>
           </CardContent>
         </Card>
