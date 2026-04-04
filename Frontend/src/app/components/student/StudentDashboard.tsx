@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
@@ -11,77 +11,75 @@ import {
   XCircle, 
   Trophy,
   FileCode,
-  TrendingUp
+  TrendingUp,
+  Loader2
 } from 'lucide-react';
 import { AssignmentDetail } from './AssignmentDetail';
 import { useAuth } from '@/app/contexts/AuthContext';
-
-// Mock data
-const mockAssignments = [
-  {
-    id: '1',
-    title: 'Bài tập 1: Sắp xếp mảng',
-    course: 'Cấu trúc dữ liệu và giải thuật',
-    deadline: '2026-01-30T23:59:59',
-    status: 'submitted',
-    score: 85,
-    maxScore: 100,
-    difficulty: 'medium',
-    description: 'Viết chương trình sắp xếp mảng số nguyên theo thứ tự tăng dần'
-  },
-  {
-    id: '2',
-    title: 'Bài tập 2: Tìm kiếm nhị phân',
-    course: 'Cấu trúc dữ liệu và giải thuật',
-    deadline: '2026-02-05T23:59:59',
-    status: 'in_progress',
-    score: 0,
-    maxScore: 100,
-    difficulty: 'hard',
-    description: 'Cài đặt thuật toán tìm kiếm nhị phân trên mảng đã sắp xếp'
-  },
-  {
-    id: '3',
-    title: 'Bài tập 3: Linked List',
-    course: 'Cấu trúc dữ liệu và giải thuật',
-    deadline: '2026-02-10T23:59:59',
-    status: 'pending',
-    score: 0,
-    maxScore: 100,
-    difficulty: 'medium',
-    description: 'Cài đặt danh sách liên kết đơn với các thao tác cơ bản'
-  },
-  {
-    id: '4',
-    title: 'Lab 1: Web Server với Node.js',
-    course: 'Lập trình Web',
-    deadline: '2026-01-28T23:59:59',
-    status: 'submitted',
-    score: 95,
-    maxScore: 100,
-    difficulty: 'easy',
-    description: 'Tạo một web server đơn giản sử dụng Node.js và Express'
-  }
-];
+import { examService, Exam } from '../../../services/examService';
 
 export function StudentDashboard() {
-  const [selectedAssignment, setSelectedAssignment] = useState<string | null>(null);
+  const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  if (selectedAssignment) {
-    const assignment = mockAssignments.find(a => a.id === selectedAssignment);
+  // Fetch exams from API
+  useEffect(() => {
+    const fetchExams = async () => {
+      try {
+        setLoading(true);
+        const data = await examService.getExams();
+        // Chỉ hiển thị bài thi đã publish
+        const publishedExams = data.filter(e => e.status === 'published');
+        setExams(publishedExams);
+      } catch (err) {
+        console.error('Failed to fetch exams:', err);
+        setError('Không thể tải danh sách bài thi');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchExams();
+  }, []);
+
+  if (selectedExam) {
     return (
       <AssignmentDetail
-        assignment={assignment!}
-        onBack={() => setSelectedAssignment(null)}
+        exam={selectedExam}
+        onBack={() => setSelectedExam(null)}
       />
     );
   }
 
-  const submittedCount = mockAssignments.filter(a => a.status === 'submitted').length;
-  const averageScore = mockAssignments
-    .filter(a => a.status === 'submitted')
-    .reduce((sum, a) => sum + a.score, 0) / submittedCount || 0;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <span className="ml-2 text-gray-600">Đang tải bài thi...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-8 text-red-600">
+        <p>{error}</p>
+        <Button onClick={() => window.location.reload()} className="mt-4">
+          Thử lại
+        </Button>
+      </div>
+    );
+  }
+
+  const submittedCount = exams.filter(e => {
+    // Cần có logic kiểm tra đã nộp hay chưa
+    // Tạm thời dùng status
+    return e.status === 'completed';
+  }).length;
+
+  const averageScore = 0; // Sẽ tính từ API submissions
 
   return (
     <div className="space-y-6">
@@ -99,7 +97,7 @@ export function StudentDashboard() {
             <BookOpen className="h-4 w-4 text-gray-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockAssignments.length}</div>
+            <div className="text-2xl font-bold">{exams.length}</div>
             <p className="text-xs text-gray-600 mt-1">Trong học kỳ này</p>
           </CardContent>
         </Card>
@@ -111,7 +109,7 @@ export function StudentDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{submittedCount}</div>
-            <Progress value={(submittedCount / mockAssignments.length) * 100} className="mt-2" />
+            <Progress value={exams.length ? (submittedCount / exams.length) * 100 : 0} className="mt-2" />
           </CardContent>
         </Card>
 
@@ -133,14 +131,14 @@ export function StudentDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {mockAssignments.filter(a => a.status !== 'submitted').length}
+              {exams.filter(e => e.status === 'in_progress').length}
             </div>
             <p className="text-xs text-gray-600 mt-1">Bài tập cần nộp</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Assignments */}
+      {/* Exams List */}
       <Tabs defaultValue="all" className="w-full">
         <TabsList>
           <TabsTrigger value="all">Tất cả</TabsTrigger>
@@ -149,35 +147,35 @@ export function StudentDashboard() {
         </TabsList>
 
         <TabsContent value="all" className="space-y-4 mt-4">
-          {mockAssignments.map((assignment) => (
-            <AssignmentCard
-              key={assignment.id}
-              assignment={assignment}
-              onClick={() => setSelectedAssignment(assignment.id)}
+          {exams.map((exam) => (
+            <ExamCard
+              key={exam.id}
+              exam={exam}
+              onClick={() => setSelectedExam(exam)}
             />
           ))}
         </TabsContent>
 
         <TabsContent value="pending" className="space-y-4 mt-4">
-          {mockAssignments
-            .filter(a => a.status !== 'submitted')
-            .map((assignment) => (
-              <AssignmentCard
-                key={assignment.id}
-                assignment={assignment}
-                onClick={() => setSelectedAssignment(assignment.id)}
+          {exams
+            .filter(e => e.status === 'in_progress' || e.status === 'published')
+            .map((exam) => (
+              <ExamCard
+                key={exam.id}
+                exam={exam}
+                onClick={() => setSelectedExam(exam)}
               />
             ))}
         </TabsContent>
 
         <TabsContent value="submitted" className="space-y-4 mt-4">
-          {mockAssignments
-            .filter(a => a.status === 'submitted')
-            .map((assignment) => (
-              <AssignmentCard
-                key={assignment.id}
-                assignment={assignment}
-                onClick={() => setSelectedAssignment(assignment.id)}
+          {exams
+            .filter(e => e.status === 'completed')
+            .map((exam) => (
+              <ExamCard
+                key={exam.id}
+                exam={exam}
+                onClick={() => setSelectedExam(exam)}
               />
             ))}
         </TabsContent>
@@ -186,9 +184,19 @@ export function StudentDashboard() {
   );
 }
 
-function AssignmentCard({ assignment, onClick }: { assignment: any; onClick: () => void }) {
-  const isOverdue = new Date(assignment.deadline) < new Date() && assignment.status !== 'submitted';
-  const daysLeft = Math.ceil((new Date(assignment.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+// Component hiển thị bài thi
+function ExamCard({ exam, onClick }: { exam: Exam; onClick: () => void }) {
+  const isOverdue = new Date(exam.end_time) < new Date() && exam.status !== 'completed';
+  const daysLeft = Math.ceil((new Date(exam.end_time).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+  
+  // Xác định độ khó dựa trên duration hoặc title (tạm thời)
+  const getDifficulty = () => {
+    if (exam.duration_minutes <= 30) return 'easy';
+    if (exam.duration_minutes <= 60) return 'medium';
+    return 'hard';
+  };
+  
+  const difficulty = getDifficulty();
 
   return (
     <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={onClick}>
@@ -197,17 +205,17 @@ function AssignmentCard({ assignment, onClick }: { assignment: any; onClick: () 
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <FileCode className="w-5 h-5 text-gray-600" />
-              <h3 className="font-semibold text-lg">{assignment.title}</h3>
+              <h3 className="font-semibold text-lg">{exam.title}</h3>
               <Badge variant={
-                assignment.difficulty === 'easy' ? 'default' :
-                assignment.difficulty === 'medium' ? 'secondary' : 'destructive'
+                difficulty === 'easy' ? 'default' :
+                difficulty === 'medium' ? 'secondary' : 'destructive'
               }>
-                {assignment.difficulty === 'easy' ? 'Dễ' :
-                 assignment.difficulty === 'medium' ? 'Trung bình' : 'Khó'}
+                {difficulty === 'easy' ? 'Dễ' :
+                 difficulty === 'medium' ? 'Trung bình' : 'Khó'}
               </Badge>
             </div>
-            <p className="text-sm text-gray-600 mb-3">{assignment.course}</p>
-            <p className="text-sm text-gray-700 mb-4">{assignment.description}</p>
+            <p className="text-sm text-gray-600 mb-3">{exam.teacher_name || 'Giảng viên'}</p>
+            <p className="text-sm text-gray-700 mb-4 line-clamp-2">{exam.description}</p>
             
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-1 text-gray-600">
@@ -215,7 +223,7 @@ function AssignmentCard({ assignment, onClick }: { assignment: any; onClick: () 
                 <span>
                   {isOverdue ? (
                     <span className="text-red-600 font-medium">Quá hạn</span>
-                  ) : assignment.status === 'submitted' ? (
+                  ) : exam.status === 'completed' ? (
                     <span className="text-green-600">Đã nộp</span>
                   ) : (
                     <span>Còn {daysLeft} ngày</span>
@@ -223,23 +231,15 @@ function AssignmentCard({ assignment, onClick }: { assignment: any; onClick: () 
                 </span>
               </div>
               
-              {assignment.status === 'submitted' && (
-                <div className="flex items-center gap-1">
-                  {assignment.score >= 70 ? (
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-red-600" />
-                  )}
-                  <span className="font-medium">
-                    {assignment.score}/{assignment.maxScore} điểm
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center gap-1">
+                <Clock className="w-4 h-4" />
+                <span>{exam.duration_minutes} phút</span>
+              </div>
             </div>
           </div>
 
           <Button variant="outline" size="sm">
-            {assignment.status === 'submitted' ? 'Xem chi tiết' : 'Nộp bài'}
+            {exam.status === 'completed' ? 'Xem chi tiết' : 'Nộp bài'}
           </Button>
         </div>
       </CardContent>

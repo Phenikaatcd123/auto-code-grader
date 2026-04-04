@@ -5,23 +5,19 @@ import {
   Code2, 
   LogOut, 
   User,
-  Settings,
   Bell
 } from 'lucide-react';
 import { useAuth } from '@/app/contexts/AuthContext';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/app/components/ui/dropdown-menu';
 
 export function Header() {
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout } = useAuth();
 
   if (!user) return null;
+
+  const handleLogout = () => {
+    logout();
+    window.location.href = '/';
+  };
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
@@ -53,45 +49,26 @@ export function Header() {
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
             </Button>
 
-            {/* User Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2">
-                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                    <User className="w-5 h-5 text-gray-600" />
-                  </div>
-                  <span className="hidden sm:inline">{user.name}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Tài khoản của tôi</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <User className="w-4 h-4 mr-2" />
-                  Hồ sơ
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Settings className="w-4 h-4 mr-2" />
-                  Cài đặt
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Đổi vai trò (Demo)</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => switchRole('student')}>
-                  Chuyển sang Sinh viên
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => switchRole('teacher')}>
-                  Chuyển sang Giảng viên
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => switchRole('admin')}>
-                  Chuyển sang Admin
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={logout}>
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Đăng xuất
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* User info and Logout button */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                  <User className="w-5 h-5 text-gray-600" />
+                </div>
+                <span className="hidden sm:inline text-sm font-medium text-gray-700">
+                  {user.name}
+                </span>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleLogout}
+                className="gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Đăng xuất</span>
+              </Button>
+            </div>
           </div>
         </div>
       </div>

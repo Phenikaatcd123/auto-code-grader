@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
-import { Textarea } from '@/app/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { Progress } from '@/app/components/ui/progress';
@@ -17,80 +16,179 @@ import {
   Code,
   FileText,
   Sparkles,
-  Clock
+  Clock,
+  Loader2
 } from 'lucide-react';
+import { submissionService } from '../../../services/submissionService';
+import { examService, Question } from '../../../services/examService';
+import { useAuth } from '@/app/contexts/AuthContext';
 
 interface AssignmentDetailProps {
-  assignment: any;
+  exam: any;
   onBack: () => void;
 }
 
-const mockTestResults = [
-  { id: 1, name: 'Test case 1', status: 'passed', time: '0.1s', memory: '2.3MB' },
-  { id: 2, name: 'Test case 2', status: 'passed', time: '0.2s', memory: '2.5MB' },
-  { id: 3, name: 'Test case 3', status: 'failed', time: '0.3s', memory: '2.8MB', error: 'Expected: [1,2,3], Got: [1,3,2]' },
-  { id: 4, name: 'Test case 4', status: 'passed', time: '0.15s', memory: '2.4MB' },
-];
-
-const mockAIFeedback = {
-  codeQuality: 75,
-  feedback: [
-    {
-      type: 'positive',
-      message: 'Code có cấu trúc tốt và dễ đọc'
-    },
-    {
-      type: 'warning',
-      message: 'Nên thêm validation cho input để tránh lỗi runtime'
-    },
-    {
-      type: 'suggestion',
-      message: 'Có thể tối ưu độ phức tạp từ O(n²) xuống O(n log n) bằng cách sử dụng thuật toán merge sort'
-    }
-  ],
-  suggestions: [
-    'Thêm comments để giải thích logic phức tạp',
-    'Xử lý các edge cases như mảng rỗng hoặc mảng có 1 phần tử',
-    'Cân nhắc sử dụng thuật toán hiệu quả hơn cho bài toán này'
-  ]
-};
-
-export function AssignmentDetail({ assignment, onBack }: AssignmentDetailProps) {
-  const [code, setCode] = useState(`// Viết code của bạn ở đây
-function sortArray(arr) {
-  // Bubble sort implementation
-  for (let i = 0; i < arr.length; i++) {
-    for (let j = 0; j < arr.length - i - 1; j++) {
-      if (arr[j] > arr[j + 1]) {
-        let temp = arr[j];
-        arr[j] = arr[j + 1];
-        arr[j + 1] = temp;
-      }
-    }
-  }
-  return arr;
-}
-`);
+export function AssignmentDetail({ exam, onBack }: AssignmentDetailProps) {
+  const { user } = useAuth();
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [code, setCode] = useState('');
   const [language, setLanguage] = useState('javascript');
   const [isRunning, setIsRunning] = useState(false);
-  const [showResults, setShowResults] = useState(assignment.status === 'submitted');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [testResults, setTestResults] = useState<any>(null);
+  const [aiFeedback, setAiFeedback] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<string | null>(null);
 
-  const handleRun = () => {
-    setIsRunning(true);
-    setTimeout(() => {
-      setIsRunning(false);
-      setShowResults(true);
+  // Fetch questions when component mounts
+  useEffect(() => {
+    const fetchQuestions = async () => {
+      try {
+        setLoading(true);
+        const data = await examService.getQuestions(exam.id);
+        setQuestions(data);
+        if (data.length > 0) {
+          setCurrentQuestion(data[0]);
+          setLanguage(data[0].language || 'javascript');
+        }
+      } catch (err) {
+        console.error('Failed to fetch questions:', err);
+        setError('Không thể tải câu hỏi');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchQuestions();
+  }, [exam.id]);
+
+  // Polling for job status
+  useEffect(() => {
+    if (!submissionId) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const result = await submissionService.getSubmissionResult(submissionId!);
+        if (result.status === 'graded') {
+          setTestResults(result.test_results);
+          setAiFeedback({
+            codeQuality: result.score || 75,
+            feedback: result.feedback || 'Đang xử lý...',
+            suggestions: []
+          });
+          setShowResults(true);
+          setJobStatus('completed');
+          clearInterval(pollInterval);
+        } else if (result.status === 'submitted') {
+          setJobStatus('processing');
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
     }, 2000);
-  };
 
-  const handleSubmit = () => {
-    if (confirm('Bạn có chắc muốn nộp bài? Bạn sẽ không thể chỉnh sửa sau khi nộp.')) {
-      handleRun();
+    return () => clearInterval(pollInterval);
+  }, [submissionId]);
+
+  const handleRun = async () => {
+    setIsRunning(true);
+    setError(null);
+    
+    try {
+      // Tạm thời simulate kết quả
+      setTimeout(() => {
+        setIsRunning(false);
+        setShowResults(true);
+        setTestResults({
+          passed: 3,
+          total: 4,
+          details: [
+            { id: 1, name: 'Test case 1', status: 'passed', time: '0.1s', memory: '2.3MB' },
+            { id: 2, name: 'Test case 2', status: 'passed', time: '0.2s', memory: '2.5MB' },
+            { id: 3, name: 'Test case 3', status: 'failed', time: '0.3s', memory: '2.8MB', error: 'Expected: [1,2,3], Got: [1,3,2]' },
+            { id: 4, name: 'Test case 4', status: 'passed', time: '0.15s', memory: '2.4MB' }
+          ]
+        });
+      }, 2000);
+    } catch (err) {
+      console.error('Run error:', err);
+      setError('Lỗi khi chạy code');
     }
   };
 
-  const passedTests = mockTestResults.filter(t => t.status === 'passed').length;
-  const totalTests = mockTestResults.length;
+  const handleSubmit = async () => {
+    if (!currentQuestion) return;
+    
+    if (!confirm('Bạn có chắc muốn nộp bài? Bạn sẽ không thể chỉnh sửa sau khi nộp.')) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    setError(null);
+    
+    try {
+      const response = await submissionService.submitCode({
+        exam_id: exam.id,
+        question_id: currentQuestion.id,
+        code: code
+      });
+      
+      setSubmissionId(response.submissionId);
+      setJobStatus('queued');
+      
+      // Bắt đầu polling
+      const pollTimer = setInterval(async () => {
+        try {
+          const result = await submissionService.getSubmissionResult(response.submissionId);
+          if (result.status === 'graded') {
+            setTestResults(result.test_results);
+            setAiFeedback({
+              codeQuality: result.score || 75,
+              feedback: result.feedback,
+              suggestions: []
+            });
+            setShowResults(true);
+            setJobStatus('completed');
+            clearInterval(pollTimer);
+          }
+        } catch (err) {
+          console.error('Polling error:', err);
+        }
+      }, 2000);
+      
+    } catch (err) {
+      console.error('Submit error:', err);
+      setError('Lỗi khi nộp bài. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <span className="ml-2 text-gray-600">Đang tải bài tập...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-8 text-red-600">
+        <p>{error}</p>
+        <Button onClick={() => window.location.reload()} className="mt-4">
+          Thử lại
+        </Button>
+      </div>
+    );
+  }
+
+  const passedTests = testResults?.details?.filter((t: any) => t.status === 'passed').length || 0;
+  const totalTests = testResults?.details?.length || 0;
 
   return (
     <div className="space-y-6">
@@ -100,17 +198,36 @@ function sortArray(arr) {
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold">{assignment.title}</h1>
-          <p className="text-gray-600 mt-1">{assignment.course}</p>
+          <h1 className="text-3xl font-bold">{currentQuestion?.title || exam.title}</h1>
+          <p className="text-gray-600 mt-1">{exam.title}</p>
         </div>
-        <Badge variant={
-          assignment.difficulty === 'easy' ? 'default' :
-          assignment.difficulty === 'medium' ? 'secondary' : 'destructive'
-        }>
-          {assignment.difficulty === 'easy' ? 'Dễ' :
-           assignment.difficulty === 'medium' ? 'Trung bình' : 'Khó'}
+        <Badge variant={exam.duration_minutes <= 30 ? 'default' : 'secondary'}>
+          {exam.duration_minutes} phút
         </Badge>
       </div>
+
+      {/* Job Status */}
+      {jobStatus === 'queued' && (
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-yellow-600" />
+              <span>Đang xếp hàng chờ chấm điểm...</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {jobStatus === 'processing' && (
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+              <span>Đang chấm điểm bài làm của bạn...</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left side - Code editor */}
@@ -136,10 +253,10 @@ function sortArray(arr) {
               </div>
             </CardHeader>
             <CardContent>
-              <Textarea
+              <textarea
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                className="font-mono text-sm min-h-[400px] resize-none"
+                className="w-full font-mono text-sm min-h-[400px] p-4 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="Nhập code của bạn..."
               />
               <div className="flex gap-2 mt-4">
@@ -147,16 +264,16 @@ function sortArray(arr) {
                   <Play className="w-4 h-4 mr-2" />
                   {isRunning ? 'Đang chạy...' : 'Chạy thử'}
                 </Button>
-                <Button onClick={handleSubmit} variant="default" disabled={isRunning}>
+                <Button onClick={handleSubmit} variant="default" disabled={isSubmitting}>
                   <Upload className="w-4 h-4 mr-2" />
-                  Nộp bài
+                  {isSubmitting ? 'Đang nộp...' : 'Nộp bài'}
                 </Button>
               </div>
             </CardContent>
           </Card>
 
           {/* Test Results */}
-          {showResults && (
+          {showResults && testResults && (
             <Card>
               <CardHeader>
                 <CardTitle>Kết quả test</CardTitle>
@@ -166,12 +283,14 @@ function sortArray(arr) {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center gap-4 mb-4">
-                  <Progress value={(passedTests / totalTests) * 100} className="flex-1" />
-                  <span className="text-sm font-medium">{Math.round((passedTests / totalTests) * 100)}%</span>
+                  <Progress value={totalTests ? (passedTests / totalTests) * 100 : 0} className="flex-1" />
+                  <span className="text-sm font-medium">
+                    {totalTests ? Math.round((passedTests / totalTests) * 100) : 0}%
+                  </span>
                 </div>
                 
-                {mockTestResults.map((test) => (
-                  <div key={test.id} className="border rounded-lg p-4">
+                {testResults.details?.map((test: any, idx: number) => (
+                  <div key={idx} className="border rounded-lg p-4">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3 flex-1">
                         {test.status === 'passed' ? (
@@ -203,7 +322,7 @@ function sortArray(arr) {
           )}
 
           {/* AI Feedback */}
-          {showResults && (
+          {showResults && aiFeedback && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -216,39 +335,15 @@ function sortArray(arr) {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium">Chất lượng code</span>
-                    <span className="text-sm font-bold">{mockAIFeedback.codeQuality}/100</span>
+                    <span className="text-sm font-bold">{aiFeedback.codeQuality}/100</span>
                   </div>
-                  <Progress value={mockAIFeedback.codeQuality} />
-                </div>
-
-                <Separator />
-
-                <div className="space-y-3">
-                  {mockAIFeedback.feedback.map((item, index) => (
-                    <div key={index} className="flex items-start gap-3">
-                      {item.type === 'positive' && (
-                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                      )}
-                      {item.type === 'warning' && (
-                        <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                      )}
-                      {item.type === 'suggestion' && (
-                        <Sparkles className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
-                      )}
-                      <p className="text-sm text-gray-700">{item.message}</p>
-                    </div>
-                  ))}
+                  <Progress value={aiFeedback.codeQuality} />
                 </div>
 
                 <Separator />
 
                 <div>
-                  <h4 className="font-medium mb-2">Đề xuất cải thiện:</h4>
-                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                    {mockAIFeedback.suggestions.map((suggestion, index) => (
-                      <li key={index}>{suggestion}</li>
-                    ))}
-                  </ul>
+                  <p className="text-sm text-gray-700">{aiFeedback.feedback}</p>
                 </div>
               </CardContent>
             </Card>
@@ -268,61 +363,43 @@ function sortArray(arr) {
               <div>
                 <div className="text-sm text-gray-600 mb-1">Deadline</div>
                 <div className="font-medium">
-                  {new Date(assignment.deadline).toLocaleString('vi-VN')}
+                  {new Date(exam.end_time).toLocaleString('vi-VN')}
                 </div>
               </div>
               
               <Separator />
               
               <div>
-                <div className="text-sm text-gray-600 mb-1">Điểm tối đa</div>
-                <div className="font-medium">{assignment.maxScore} điểm</div>
+                <div className="text-sm text-gray-600 mb-1">Thời gian làm bài</div>
+                <div className="font-medium">{exam.duration_minutes} phút</div>
               </div>
-
-              {assignment.status === 'submitted' && (
-                <>
-                  <Separator />
-                  <div>
-                    <div className="text-sm text-gray-600 mb-1">Điểm của bạn</div>
-                    <div className="text-2xl font-bold text-green-600">
-                      {assignment.score}/{assignment.maxScore}
-                    </div>
-                  </div>
-                </>
-              )}
               
               <Separator />
               
               <div>
                 <div className="text-sm text-gray-600 mb-2">Mô tả</div>
-                <p className="text-sm">{assignment.description}</p>
+                <p className="text-sm">{currentQuestion?.description || exam.description}</p>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Yêu cầu</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                <span>Input: Một mảng số nguyên chưa sắp xếp</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                <span>Output: Mảng đã được sắp xếp tăng dần</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                <span>Độ phức tạp tối đa: O(n²)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                <span>Thời gian chạy tối đa: 1s/test case</span>
-              </div>
-            </CardContent>
-          </Card>
+          {currentQuestion && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Yêu cầu</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                  <span>Ngôn ngữ: {currentQuestion.language?.toUpperCase() || 'JavaScript'}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                  <span>Điểm tối đa: {currentQuestion.max_score}</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

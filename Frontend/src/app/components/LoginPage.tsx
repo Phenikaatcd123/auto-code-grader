@@ -27,14 +27,14 @@ export function LoginPage() {
     }
   };
 
-  const quickLogin = async (demoEmail: string) => {
+  const quickLogin = async (demoEmail: string, demoPassword: string = 'demo123456') => {
     setEmail(demoEmail);
-    setPassword('123456');
+    setPassword(demoPassword);
     setError('');
     setLoading(true);
     
     try {
-      await login(demoEmail, '123456');
+      await login(demoEmail, demoPassword);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Đăng nhập thất bại');
     } finally {
@@ -137,7 +137,7 @@ export function LoginPage() {
                   type="button"
                   variant="outline"
                   className="w-full justify-start"
-                  onClick={() => quickLogin('testnew@edu.vn')}
+                  onClick={() => quickLogin('student@edu.vn', 'demo123456')}
                   disabled={loading}
                 >
                   <GraduationCap className="w-4 h-4 mr-2" />
@@ -147,7 +147,7 @@ export function LoginPage() {
                   type="button"
                   variant="outline"
                   className="w-full justify-start"
-                  onClick={() => quickLogin('teacher@edu.vn')}
+                  onClick={() => quickLogin('teacher@edu.vn', 'demo123456')}
                   disabled={loading}
                 >
                   <Code2 className="w-4 h-4 mr-2" />
@@ -157,7 +157,7 @@ export function LoginPage() {
                   type="button"
                   variant="outline"
                   className="w-full justify-start"
-                  onClick={() => quickLogin('admin@edu.vn')}
+                  onClick={() => quickLogin('admin@edu.vn', 'demo123456')}
                   disabled={loading}
                 >
                   <Code2 className="w-4 h-4 mr-2" />
